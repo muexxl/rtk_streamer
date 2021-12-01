@@ -15,4 +15,6 @@ TODOs:
     - SVIN acc
     - SVIN time
     - port
+
+- BUG: broadcast is currently issued on ALL networks. This leads to multiple receiption at host interface. What to do?
     
