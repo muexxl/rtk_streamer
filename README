@@ -1,0 +1,18 @@
+
+Author: Stephan Muekusch stephan@1drone.de
+
+1. search for a ublox M8P GPSdevice on USB 
+2. connect to GPS device
+2. set device to TIME Mode via Survey In
+3. stream RTCM data via UDP Broadcast on port 10777
+
+run python3 rtk_streamer.py
+
+
+TODOs:
+
+- parse command line parameter for
+    - SVIN acc
+    - SVIN time
+    - port
+    
