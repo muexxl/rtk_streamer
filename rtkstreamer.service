@@ -1,0 +1,15 @@
+[Unit]
+Description = RKT Streamer controls UBlox M8P device and publishes RTCM3.3 data on UDP Port 10777
+After = network.target 
+
+[Service]
+Type = simple
+ExecStart = python /home/1drone/rtk_streamer/rtk_streamer.py
+User = 1drone
+Group = ubuntu
+Restart = on-failure
+RestartSec = 5
+TimeoutStartSec = infinity
+ 
+[Install]
+WantedBy = multi-user.target
