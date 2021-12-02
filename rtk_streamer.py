@@ -57,7 +57,7 @@ class RTKStreamer():
         
     def start_SVIN(self):
         msg=UBX_CFG_TMODE3()
-        msg.encode(1,30, 50000)
+        msg.encode(1,180, 20000)
         print(f"RTK Streamer | Sending Survey-in start command to GPS")
         self.gpsp.send_to_gps(msg.serialize())
     
@@ -161,6 +161,7 @@ class RTKStreamer():
         self.gpsp.stop()
 
 def main():
+    
     gpsp = GPSParser()
     rtk_streamer= RTKStreamer(gpsp)
     rtk_streamer.run()

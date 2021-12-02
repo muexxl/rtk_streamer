@@ -109,8 +109,10 @@ class GPSParser(threading.Thread):
         for broadcast in self.udp_broadcasts:
             try:
                 self.sock.sendto(data, broadcast)
+                break #finish after first successful transmission
             except OSError:
                 pass
+            
     
     def get_next_ubx_msg(self):
         msg= None
