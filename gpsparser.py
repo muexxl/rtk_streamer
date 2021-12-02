@@ -41,6 +41,10 @@ class GPSParser(threading.Thread):
         self.ubx_lock= threading.Lock()
         self.ready=False
         self.udp_stream_active = False
+        self.init_udp_sock()
+        threading.Thread.__init__(self)
+    
+    def init_udp_sock(self):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1),
         self.sock.setblocking(0)
@@ -51,12 +55,18 @@ class GPSParser(threading.Thread):
             if ip=='':
                 continue
             self.udp_broadcasts.append((ip,10777)) 
-        threading.Thread.__init__(self)
-    
+        if ip_list:
+            logger.info (f"GPSParser | Found following UDP broadcasts: {ip_list}")
+        else:
+            logger.info ("GPSParser | No IPs found for broadcasting.")
+
+
+
+
     def open_stream_to_gps_device(self):
         gps_found = False
 
-        print ("GPSParser | Scanning for GPS device on USB Ports")
+        logger.info ("GPSParser | Scanning for GPS device on USB Ports")
 
         while not gps_found:
             for port in serial.tools.list_ports.comports():
@@ -66,7 +76,7 @@ class GPSParser(threading.Thread):
                         self.stream = serial.Serial(self.port, 115200)
                     except SerialException:
                         continue
-                    print (f"GPSParser | Connection established to Ublox GPS device on port {port.name}")
+                    logger.info (f"GPSParser | Connection established to Ublox GPS device on port {port.name}")
                     gps_found = True
                     self.ready=True
             
@@ -78,7 +88,7 @@ class GPSParser(threading.Thread):
         while (self.keep_running):
             if not self.stream.isOpen():
                 self.ready=False
-                print (f"GPSParser | No Connection to GPS device")                   
+                logger.info (f"GPSParser | No Connection to GPS device")                   
                 self.open_stream_to_gps_device()
             self.send_rx_buffer_to_stream()
             self.fill_buffer_from_stream()
@@ -91,7 +101,7 @@ class GPSParser(threading.Thread):
             elif (starts_with_RTCM_Header(msg) and self.udp_stream_active):
                 self.publish_via_udp(msg)
             #if(msg):
-            #    print(f"GPS Parser | {msg}")
+            #    logger.info(f"GPS Parser | {msg}")
             #if(starts_with_NMEA_Header(msg)):
             else:
                 pass
@@ -100,12 +110,14 @@ class GPSParser(threading.Thread):
         logger.debug(f' GPSParser | run function ended ')
 
     def stop(self):
-        print (f' GPSParser | stop function started')
+        logger.info (f' GPSParser | stop function started')
         self.keep_running = False
         self.join()
-        print(f' GPSParser | stop function ended')
+        logger.info(f' GPSParser | stop function ended')
     
     def publish_via_udp(self, data):
+        if not self.udp_broadcasts:
+            self.init_udp_sock()
         for broadcast in self.udp_broadcasts:
             try:
                 self.sock.sendto(data, broadcast)

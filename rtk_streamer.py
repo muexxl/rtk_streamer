@@ -9,6 +9,9 @@ from ubxhelper import *
 import threading
 import os
 
+logging.basicConfig(format='[%(levelname)8s]\t%(asctime)s: %(message)s ', datefmt='%d.%m.%Y %H:%M:%S', filename='rtkstreamer.log', filemode='a', level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 class RTKStreamer():
     """RTK Streamer controls ublox GPS device via GPS Parser"""
     def __init__(self, gpsparser : GPSParser):
@@ -48,7 +51,7 @@ class RTKStreamer():
         msg=self.gpsp.get_next_ubx_msg_type_timed('NAV-SVIN',5)
         status='undefined'
         if msg:
-            print(f"RTK Streamer | SVIN Status Dur: {msg.dur}s, Acc: {msg.mean_acc/10000:01.3f}m  Valid: {msg.valid}  Obs: {msg.num_obs}  In progress: {msg.in_progress}  itow: {msg.itow} ")
+            logger.info(f"RTK Streamer | SVIN Status Dur: {msg.dur}s, Acc: {msg.mean_acc/10000:01.3f}m  Valid: {msg.valid}  Obs: {msg.num_obs}  In progress: {msg.in_progress}  itow: {msg.itow} ")
             if msg.in_progress==1:
                 status='surveying'
             if msg.valid==1:
@@ -58,7 +61,7 @@ class RTKStreamer():
     def start_SVIN(self):
         msg=UBX_CFG_TMODE3()
         msg.encode(1,180, 20000)
-        print(f"RTK Streamer | Sending Survey-in start command to GPS")
+        logger.info(f"RTK Streamer | Sending Survey-in start command to GPS")
         self.gpsp.send_to_gps(msg.serialize())
     
     def reset_gps(self, mode='cold'):
@@ -70,7 +73,7 @@ class RTKStreamer():
             msg = UBX_RST_MSG_HOTSTART()
 
         data = msg.serialize()
-        print(f"RTK Streamer | Sending RESET {mode} to GNS")
+        logger.info(f"RTK Streamer | Sending RESET {mode} to GNS")
         self.gpsp.send_to_gps(data)
     
     def set_rate(self, rate):
@@ -138,7 +141,7 @@ class RTKStreamer():
                 self.send_msg_deactivation_request(obsolete_msgs[msg])
             all_confirmed =1
         time.sleep(1)
-        print("RTK Streamer | Sending msg activation requests")
+        logger.info("RTK Streamer | Sending msg activation requests")
 
         all_confirmed=0
         while not all_confirmed:
