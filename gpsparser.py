@@ -32,6 +32,7 @@ class GPSParser(threading.Thread):
         self.tx_buffer = b''
         self.rx_buffer = b''
         self.rtcm_buffer = b''
+        
         self.tx_lock = threading.Lock()
         self.rx_lock = threading.Lock()
         self.rtcm_lock= threading.Lock()
@@ -84,7 +85,7 @@ class GPSParser(threading.Thread):
         
     def run(self):
 
-        logger.debug(f' GPSParser | run function started')
+        logger.debug(f'GPSParser | run function started')
         while (self.keep_running):
             if not self.stream.isOpen():
                 self.ready=False
@@ -99,28 +100,41 @@ class GPSParser(threading.Thread):
                 self.ubx_lock.release()
 
             elif (starts_with_RTCM_Header(msg) and self.udp_stream_active):
-                self.publish_via_udp(msg)
+                #idea: only publish after reception of rtcm 1005 (comes ~60ms late) & rtcm1230(last message of MSM4/MSM7 +code phase bias block comes within 1ms)
+                self.buffer_and_publish_on_1230(msg)
             #if(msg):
             #    logger.info(f"GPS Parser | {msg}")
             #if(starts_with_NMEA_Header(msg)):
             else:
-                pass
                 time.sleep(0.01)
         
-        logger.debug(f' GPSParser | run function ended ')
+        logger.debug(f'GPSParser | run function ended ')
 
     def stop(self):
-        logger.info (f' GPSParser | stop function started')
+        logger.info (f'GPSParser | stop function started')
         self.keep_running = False
         self.join()
-        logger.info(f' GPSParser | stop function ended')
+        logger.info(f'GPSParser | stop function ended')
     
+    def buffer_and_publish_on_1230(self, rtcm_msg):
+        #append message to buffer
+        self.rtcm_buffer+=rtcm_msg
+
+        #publish only if msgtype is 1230
+        if get_rtcm_msg_type(rtcm_msg) == 1230:
+            self.publish_via_udp(self.rtcm_buffer)
+            self.rtcm_buffer = b''
+        
+
+
     def publish_via_udp(self, data):
         if not self.udp_broadcasts:
             self.init_udp_sock()
         for broadcast in self.udp_broadcasts:
             try:
                 self.sock.sendto(data, broadcast)
+                log_msg= f"GPSParser | len={len(data)}, content={bytes_to_str(data)}"
+                logger.info(log_msg)
                 break #finish after first successful transmission
             except OSError:
                 pass
@@ -256,6 +270,9 @@ class GPSParser(threading.Thread):
         return result
 
     def extract_next_msg(self):
+        if not len(self.buffer):
+            return b''
+
         length = self.clear_buffer_until_next_msg_and_return_length()
         next_msg = b''
         if length:
@@ -343,3 +360,13 @@ class UDPServer(threading.Thread):
 
 
 
+def bytes_to_str(bytestr):
+    string=""
+    for b in bytestr:
+        string+= f"{b:02x} "
+    
+    #remove last blank
+    if string.endswith(" "):
+        string=string[:-1]
+    
+    return string

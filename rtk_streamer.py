@@ -9,7 +9,7 @@ from ubxhelper import *
 import threading
 import os
 
-logging.basicConfig(format='[%(levelname)8s]\t%(asctime)s: %(message)s ', datefmt='%d.%m.%Y %H:%M:%S', filename='rtkstreamer.log', filemode='a', level=logging.INFO)
+logging.basicConfig(format='[%(levelname)8s]\t%(asctime)s: %(message)s ', filename='rtkstreamer.log', filemode='a', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class RTKStreamer():
@@ -128,11 +128,11 @@ class RTKStreamer():
             required_msgs={
         "NAV-SVIN": b"\x01\x3B",
         "RTCM3.3-1005": b"\xF5\x05",
-        "RTCM3.3-1074": b"\xF5\x4A",
-        "RTCM3.3-1077": b"\xF5\x4D",
-        "RTCM3.3-1084": b"\xF5\x54",
-        "RTCM3.3-1087": b"\xF5\x57",
-        "RTCM3.3-1230": b"\xF5\xE6"
+        "RTCM3.3-1074": b"\xF5\x4A", #GPS RTK MSM4
+        #"RTCM3.3-1077": b"\xF5\x4D", #GPS RTK MSM7
+        "RTCM3.3-1084": b"\xF5\x54", #GLONASS RTK MSM4
+        #"RTCM3.3-1087": b"\xF5\x57", #GLONASS RTK MSM7
+        "RTCM3.3-1230": b"\xF5\xE6"  #GLONASS RTK Code-phase bias
             }
 
         all_confirmed=0

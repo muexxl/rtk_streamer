@@ -39,6 +39,9 @@ def crc24q(buf, startvalue=0):
         crc= ((crc << 8) & 0xFFFFFF) ^ crc24qtab[(crc >> 16) ^ b]
     return crc
 
+def get_rtcm_msg_type(rtcm_message):
+    return rtcm_message[3]<<4 | rtcm_message[4]>>4
+    
 
 crc24qtab = [
     0x000000, 0x864CFB, 0x8AD50D, 0x0C99F6, 0x93E6E1, 0x15AA1A, 0x1933EC, 0x9F7F17,
