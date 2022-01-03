@@ -22,7 +22,6 @@ from os import fchown
 import socket
 import threading
 import time
-import subprocess
 
 
 class GPSParser(threading.Thread):
@@ -42,6 +41,7 @@ class GPSParser(threading.Thread):
         self.ubx_lock= threading.Lock()
         self.ready=False
         self.udp_stream_active = False
+        self.last_stream_read= time.time()
         self.init_udp_sock()
         threading.Thread.__init__(self)
     
@@ -93,20 +93,24 @@ class GPSParser(threading.Thread):
                 self.open_stream_to_gps_device()
             self.send_rx_buffer_to_stream()
             self.fill_buffer_from_stream()
-            msg = self.extract_next_msg()
-            if (starts_with_UBX_Header(msg)):
-                self.ubx_lock.acquire()
-                self.ubx_buffer.append(UBXMSG(msg))
-                self.ubx_lock.release()
 
-            elif (starts_with_RTCM_Header(msg) and self.udp_stream_active):
-                #idea: only publish after reception of rtcm 1005 (comes ~60ms late) & rtcm1230(last message of MSM4/MSM7 +code phase bias block comes within 1ms)
-                self.buffer_and_publish_on_1230(msg)
+            #process all messages from buffer
+            msg = self.extract_next_msg()
+            while(msg):
+                if (starts_with_UBX_Header(msg)):
+                    self.ubx_lock.acquire()
+                    self.ubx_buffer.append(UBXMSG(msg, self.last_stream_read))
+                    self.ubx_lock.release()
+
+                elif (starts_with_RTCM_Header(msg) and self.udp_stream_active):
+                    #idea: only publish after reception of rtcm 1005 (comes ~60ms late) & rtcm1230(last message of MSM4/MSM7 +code phase bias block comes within 1ms)
+                    self.buffer_and_publish_on_1230(msg)
+                
+                msg=self.extract_next_msg()
             #if(msg):
             #    logger.info(f"GPS Parser | {msg}")
             #if(starts_with_NMEA_Header(msg)):
-            else:
-                time.sleep(0.01)
+            time.sleep(0.01)
         
         logger.debug(f'GPSParser | run function ended ')
 
@@ -188,6 +192,32 @@ class GPSParser(threading.Thread):
                     
         return return_msg
 
+    def get_next_ubx_msg_timed(self,msg_type, timeout=-1):
+        """
+        timeout in seconds
+        imeout =-1 for infinite
+
+        """
+        msg = None
+        return_msg=None
+        is_expired=False
+        start = time.time()
+        while not is_expired:
+            msg=self.get_next_ubx_msg()
+            if msg:
+                msg = msg.specify()
+                break
+            else:
+                time.sleep(0.1)
+            
+            if timeout==-1:#never expire
+                pass
+            else:
+                if (start+timeout) < time.time():
+                    is_expired=True
+                    
+        return return_msg
+
     def send_to_gps(self, data):
         self.rx_lock.acquire()
         self.rx_buffer += data
@@ -204,6 +234,7 @@ class GPSParser(threading.Thread):
         self.rx_lock.release()
     
     def fill_buffer_from_stream(self):
+        self.last_stream_read= time.time()
         try:
             self.buffer += self.stream.read_all()
         except OSError:

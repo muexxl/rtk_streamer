@@ -8,17 +8,22 @@ import time
 from ubxhelper import *
 import threading
 import os
+import argparse
 
 logging.basicConfig(format='[%(levelname)8s]\t%(asctime)s: %(message)s ', filename='rtkstreamer.log', filemode='a', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class RTKStreamer():
     """RTK Streamer controls ublox GPS device via GPS Parser"""
-    def __init__(self, gpsparser : GPSParser):
+    def __init__(self, gpsparser : GPSParser, mode='survey-in', time_difference = 0, assistance_data = 0, location=(0,0,0,0)):
         self.gpsp = gpsparser
         self.status = 'undefined'
         self.rate=0
         self.msg_mode=''
+        self.location = location
+        self.mode = mode
+        self.time_difference = time_difference
+            
     
     def run(self):
         self.gpsp.start()
@@ -33,15 +38,49 @@ class RTKStreamer():
                 self.start_SVIN()
                 self.set_rate(500)
                 self.gpsp.udp_stream_active = False
+            elif self.status == 'start_output_positions':
+                self.set_messages()
             elif self.status == 'surveying':
                 self.gpsp.udp_stream_active = False
             elif self.status == 'streaming':
                 self.set_rate(1000)
                 self.set_messages('streaming')
                 self.gpsp.udp_stream_active = True
-
+            elif self.status == 'recording':
+                self.set_messages('recording')
+            
             self.status=self.get_status()
     
+    def process_ubx_messages(self):
+        msg = self.gpsp.get_next_ubx_msg()
+        while(msg):
+            msg.specify()
+            if msg.type == 'NAV-STATUS':
+                if msg.gpsfix == 5:
+                    self.last_status=time.time()
+                    self.status = 'time'
+
+            if msg.type == 'NAV-SVIN':
+                logger.info(f"RTK Streamer | SVIN Status Dur: {msg.dur}s, Acc: {msg.mean_acc/10000:01.3f}m  Valid: {msg.valid}  Obs: {msg.num_obs}  In progress: {msg.in_progress}  itow: {msg.itow}, t_recv: {msg.t_recv} ")
+                if msg.in_progress==1:
+                    self.last_status= time.time()
+                    self.status='surveying'
+            
+            if msg.type == 'NAV-HPPOSLLH':
+                if self.mode == 'output-positions':
+                    self.status= 'recording'
+                    self.last_status=time.time()
+                    print(f"{msg.time}, {msg.lat}, {msg.lon}, {msg.height}")
+            
+
+            msg = self.gpsp.get_next_ubx_msg()
+            
+        time_since_last_status = time.time() - self.last_status
+        if time_since_last_status > 5:
+            self.status = 'undefined'
+        
+
+
     def wait_for_gps_ready(self):
         while not self.gpsp.ready:
             time.sleep(0.2)
@@ -51,7 +90,7 @@ class RTKStreamer():
         msg=self.gpsp.get_next_ubx_msg_type_timed('NAV-SVIN',5)
         status='undefined'
         if msg:
-            logger.info(f"RTK Streamer | SVIN Status Dur: {msg.dur}s, Acc: {msg.mean_acc/10000:01.3f}m  Valid: {msg.valid}  Obs: {msg.num_obs}  In progress: {msg.in_progress}  itow: {msg.itow} ")
+            logger.info(f"RTK Streamer | SVIN Status Dur: {msg.dur}s, Acc: {msg.mean_acc/10000:01.3f}m  Valid: {msg.valid}  Obs: {msg.num_obs}  In progress: {msg.in_progress}  itow: {msg.itow}, t_recv: {msg.t_recv} ")
             if msg.in_progress==1:
                 status='surveying'
             if msg.valid==1:
@@ -60,7 +99,7 @@ class RTKStreamer():
         
     def start_SVIN(self):
         msg=UBX_CFG_TMODE3()
-        msg.encode(1,180, 20000)
+        msg.encode_survey_in(200,20000)
         logger.info(f"RTK Streamer | Sending Survey-in start command to GPS")
         self.gpsp.send_to_gps(msg.serialize())
     
@@ -165,10 +204,31 @@ class RTKStreamer():
 
 def main():
     
-    gpsp = GPSParser()
-    rtk_streamer= RTKStreamer(gpsp)
-    rtk_streamer.run()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-o", "--output_positions", help="output positions", action="store_true")
+    parser.add_argument("-a", "--assistance_data", help="regulary update online assistance data")
+    parser.add_argument("-t", "--time_difference", help="regulary store difference to local time in .td file", action="store_true")
+    parser.add_argument("-s", "--survey_in", "help=use position surveying, default mode", default="200,2.0")
+    parser.add_argument("-l", "--location", "help=use fixed location for time mode and assistance data")
+    args=parser.parse_args()
 
+    gpsp = GPSParser()
+    
+    if args.output_positions:
+        streamer_mode='output_positions'
+    
+    streamer_location=(0,0,0,0)
+    if args.location:
+        if len(args.location.split(","))==4:
+            lat,lon,height,acc= args.location.split(",")
+            lat= float(lat)
+            lon=float(lon)
+            height = float(height)
+            acc = float (acc)
+            streamer_location = (lat,lon,height,acc)
+
+    rtk_streamer= RTKStreamer(gpsp, mode=streamer_mode, time_difference=args.time_difference, assistance_data=args.assistance_data, location=streamer_location)
+    rtk_streamer.run()
 
 
 

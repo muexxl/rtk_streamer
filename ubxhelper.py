@@ -4,10 +4,10 @@ import struct
 from datetime import datetime
 import time
 
-UBX_PORT_USB_ONLY=b'\x00\x00\x00\x01\x00\x00'
-UBX_PORT_NONE=b'\x00\x00\x00\x00\x00\x00'
-UBX_PORT_CURRENT_PORT_DISABLE=b'\x00'
-UBX_PORT_CURRENT_PORT_ENABLE=b'\x01'
+UBX_PORT_USB_ONLY = b'\x00\x00\x00\x01\x00\x00'
+UBX_PORT_NONE = b'\x00\x00\x00\x00\x00\x00'
+UBX_PORT_CURRENT_PORT_DISABLE = b'\x00'
+UBX_PORT_CURRENT_PORT_ENABLE = b'\x01'
 UBX_HEADER = b'\xb5\x62'
 UBX_MSG_MIN_LENGTH = 8
 
@@ -146,19 +146,20 @@ UBX_MSG_IDS = {
     "RTCM3.3-4072.1": b"\xF5\xFD"
 }
 
+
 def get_msg_by_id(id):
     for msg in UBX_MSG_IDS:
-        if UBX_MSG_IDS[msg]==id:
+        if UBX_MSG_IDS[msg] == id:
             return msg
     return None
 
+
 def get_id_by_msg(msg):
     try:
-        id=UBX_MSG_IDS[msg]
+        id = UBX_MSG_IDS[msg]
     except KeyError:
-        id=None
+        id = None
     return id
-
 
 
 class UBXMSG(object):
@@ -171,7 +172,7 @@ class UBXMSG(object):
     checksum = b'\x00\x00'  # 2 byte checksum
     buffer = b''
 
-    def __init__(self, message=b''):
+    def __init__(self, message=b'', time_received= 0):
         if len(message) >= 8:
             self.buffer = message
             self.header = message[0:2]
@@ -180,6 +181,10 @@ class UBXMSG(object):
             self.length = struct.unpack('<H', message[4:6])[0]
             self.checksum = message[-2:]
             self.payload = message[6:-2]
+            if time_received:
+                self.time_received= time_received
+            else:
+                self.time_received = time.time()
 
     def calc_checksum(self, content: bytes) -> bytes:
         """
@@ -231,9 +236,9 @@ class UBXMSG(object):
         msg += self.payload
         msg += self.checksum
         self.buffer = msg
-    
+
     def serialize_poll(self):
-        self.payload=b''
+        self.payload = b''
         self.update()
         return self.buffer
 
@@ -252,23 +257,133 @@ class UBXMSG(object):
     def specify(self):
         identifier = self.class_ID + self.msg_ID
 
+        if (identifier == b'\x01\x02'):
+            return UBX_NAV_POSLLH(self.buffer, self.time_received)
+        if (identifier == b'\x01\x03'):
+            return UBX_NAV_STATUS(self.buffer, self.time_received)
         if (identifier == b'\x01\x06'):
-            return UBX_NAV_SOL(self.buffer)
+            return UBX_NAV_SOL(self.buffer, self.time_received)
+        if (identifier == b'\x01\x14'):
+            return UBX_NAV_HPPOSLLH(self.buffer, self.time_received)
+        if (identifier == b'\x01\x21'):
+            return UBX_NAV_TIMEUTC(self.buffer, self.time_received)
         if (identifier == b'\x01\x3B'):
-            return UBX_NAV_SVIN(self.buffer)
+            return UBX_NAV_SVIN(self.buffer, self.time_received)
         if (identifier == b'\x06\x01'):
-            return UBX_CFG_MSG(self.buffer)
+            return UBX_CFG_MSG(self.buffer, self.time_received)
         if (identifier == b'\x06\x04'):
-            return UBX_RST_MSG(self.buffer)
+            return UBX_RST_MSG(self.buffer,self.time_received)
         if (identifier == b'\x06\x23'):
-            return UBX_CFG_NAVX5(self.buffer)
+            return UBX_CFG_NAVX5(self.buffer,self.time_received)
         if (identifier == b'\x13\x60'):
-            return UBX_MGA_ACK(self.buffer)
+            return UBX_MGA_ACK(self.buffer,self.time_received)
         if (identifier == b'\x13\x80'):
-            return UBX_MGA_DBD(self.buffer)
+            return UBX_MGA_DBD(self.buffer,self.time_received)
         # print("Message unknown: ")
         # self.print()
         return self
+
+
+class UBX_NAV_POSLLH(UBXMSG):
+    class_ID = b'\x01'
+    msg_ID = b'\x02'
+    msg_type = 'NAV-POSLLH'
+
+    def __init__(self, msg=b'', t=0):
+        super().__init__(msg,t)
+        self.itow = struct.unpack('<I', self.payload[0:4])[0]
+        self.lon = struct.unpack('<i', self.payload[4:8])[0]
+        self.lat = struct.unpack('<i', self.payload[8:12])[0]
+        self.height = struct.unpack('<i', self.payload[12:16])[0]
+        self.hMSL = struct.unpack('<i', self.payload[16:20])[0]
+        self.vAcc = struct.unpack('<I', self.payload[20:24])[0]
+        self.hAcc = struct.unpack('<I', self.payload[24:28])[0]
+
+
+class UBX_NAV_STATUS(UBXMSG):
+    class_ID = b'\x01'
+    msg_ID = b'\x03'
+    msg_type = 'NAV-STATUS'
+
+    def __init__(self, msg=b'', t=0):
+        super().__init__(msg,t)
+        self.itow = struct.unpack('<I', self.payload[0:4])[0]
+        self.gpsfix = self.payload[4]
+        self.flags = self.payload[5]
+        self.fixStat = self.payload[6]
+        self.flags2 = self.payload[7]
+        self.ttff = struct.unpack('<I', self.payload[8:12])[0]
+        self.carrSoln = self.flags2 >>6
+        self.RTK_float = (self.flags2 >>6 ) & 0x01
+        self.RTK_fix = (self.flags2 >>7 ) & 0x01
+        
+
+
+
+class UBX_NAV_SOL(UBXMSG):
+    class_ID = b'\x01'
+    msg_ID = b'\x06'
+    msg_type = 'NAV-SOL'
+    
+    def __init__(self, msg=b'', t=0):
+        super().__init__(msg,t)
+        self.itow = struct.unpack('<I', self.payload[0:4])[0]
+        self.ftow = struct.unpack('<i', self.payload[4:8])[0]
+        self.week = struct.unpack('<h', self.payload[8:10])[0]
+        self.gps_fix_type = self.payload[10]
+        self.numSV = self.payload[47]
+
+
+class UBX_NAV_HPPOSLLH(UBXMSG):
+    class_ID = b'\x01'
+    msg_ID = b'\x14'
+    msg_type = 'NAV-HPPOSLLH'
+
+    def __init__(self, msg=b'', t=0):
+        super().__init__(msg,t)
+        self.invalid = self.payload[3]
+        self.itow = struct.unpack('<I', self.payload[4:8])[0]
+        lon_e7, lat_e7, height_e3, hMSL_e3, lon_e9, lat_e9, height_e4, hMSL_e4, hAcc_e4, vAcc_e4 = struct.unpack('<iiiibbbbII', self.payload[8:36])
+        self.lon = lon_e7 * 1e-7 + lon_e9 * 1e-9
+        self.lat = lat_e7 * 1e-7 + lat_e9 * 1e-9
+        self.height= height_e3 * 1e-3 + height_e4*1e-4
+        self.hMSL = hMSL_e3*1e-3  + hMSL_e4*1e-4
+        self.hAcc= hAcc_e4 * 1e-4
+        self.vAcc= vAcc_e4 * 1e-4
+
+class UBX_NAV_TIMEUTC(UBXMSG):
+    class_ID = b'\x01'
+    msg_ID = b'\x21'
+    msg_type = 'NAV-TIMEUTC'
+
+    def __init__(self, msg=b'', t=0):
+        super().__init__(msg,t)
+        self.itow = struct.unpack('<I', self.payload[0:4])[0]
+        self.tAcc = struct.unpack('<I', self.payload[4:8])[0]
+        self.nano = struct.unpack('<i', self.payload[8:12])[0]
+        self.year = struct.unpack('<S', self.payload[12:14])[0]
+        self.month = struct.unpack('<B', self.payload[14:15])[0]
+        self.day = struct.unpack('<B', self.payload[15:16])[0]
+        self.hour = struct.unpack('<B', self.payload[16:17])[0]
+        self.min = struct.unpack('<B', self.payload[17:18])[0]
+        self.sec = struct.unpack('<B', self.payload[18:19])[0]
+        self.validity_flags = struct.unpack('<B', self.payload[19:20])[0]
+
+
+class UBX_NAV_SVIN(UBXMSG):
+    class_ID = b'\x01'
+    msg_ID = b'\x3B'
+    msg_type = 'NAV-SVIN'
+
+    def __init__(self, msg=b'', t=0):
+        super().__init__(msg,t)
+        self.itow = struct.unpack('<I', self.payload[4:8])[0]
+        self.dur = struct.unpack('<I', self.payload[8:12])[0]
+        self.mean_acc = struct.unpack('<I', self.payload[28:32])[0]  # in 0.1mm
+        self.num_obs = struct.unpack('<I', self.payload[32:36])[
+            0]  # Number of observations
+        self.valid = self.payload[36]
+        self.in_progress = self.payload[37]
 
 
 class UBX_CFG_MSG(UBXMSG):
@@ -276,8 +391,8 @@ class UBX_CFG_MSG(UBXMSG):
     msg_ID = b'\x01'
     msg_type = 'CFG-MSG'
 
-    def __init__(self, msg=b''):
-        super().__init__(msg)
+    def __init__(self, msg=b'', t=0):
+        super().__init__(msg,t)
         if msg:
             if len(self.payload) == 8:
                 self.target_msg_id = self.payload[0:2]
@@ -321,8 +436,8 @@ class UBX_RST_MSG(UBXMSG):
     RESET_MODE_CONTROLLED_SOFTWARE_RESET = b'\x01'
     RESET_MODE_CONTROLLED_RESET_GNSS_ONLY = b'\x02'
 
-    def __init__(self, msg=b''):
-        super().__init__(msg)
+    def __init__(self, msg=b'', t=0):
+        super().__init__(msg,t)
         if msg:
             self.navSBR = self.payload[0:2]
             self.reset_mode = self.payload[2:3]
@@ -336,206 +451,222 @@ class UBX_RST_MSG_COLDSTART(UBX_RST_MSG):
     def __init__(self):
         super().__init__()
         navSBR = b'\xff\xb9'
-        navSBR = b'\xff\xff' #from u-center 
+        navSBR = b'\xff\xff'  # from u-center
         reset_mode = self.RESET_MODE_CONTROLLED_RESET_GNSS_ONLY
         self.encode(navSBR, reset_mode)
+
 
 class UBX_RST_MSG_WARMSTART(UBX_RST_MSG):
     def __init__(self):
         super().__init__()
-        navSBR = b'\x01\x00' #from u-center 
+        navSBR = b'\x01\x00'  # from u-center
         reset_mode = self.RESET_MODE_CONTROLLED_RESET_GNSS_ONLY
         self.encode(navSBR, reset_mode)
+
 
 class UBX_RST_MSG_HOTSTART(UBX_RST_MSG):
     def __init__(self):
         super().__init__()
-        navSBR = b'\x00\x00' #from u-center 
+        navSBR = b'\x00\x00'  # from u-center
         reset_mode = self.RESET_MODE_CONTROLLED_RESET_GNSS_ONLY
         self.encode(navSBR, reset_mode)
+
 
 class UBX_MGA_DBD(UBXMSG):
     class_ID = b'\x13'
     msg_ID = b'\x80'
     msg_type = 'MGA-DBD'
 
-    def __init__(self, msg=b''):
-        super().__init__(msg)
+    def __init__(self, msg=b'', t=0):
+        super().__init__(msg,t)
 
     def decode(self):
-        self.type=self.payload[0]
-        self.version=self.payload[1]
-        self.infoCode=self.payload[2]
-        self.msgId=self.payload[3]
-        self.msgPayloadStart=self.payload[4:]
-        
-class UBX_NAV_SOL(UBXMSG):
-    class_ID = b'\x01'
-    msg_ID = b'\x06'
-    msg_type = 'NAV-SOL'
-
-    def __init__(self, msg=b''):
-        super().__init__(msg)
-        self.itow = struct.unpack('<I', self.payload[0:4])[0]
-        self.ftow = struct.unpack('<i', self.payload[4:8])[0]
-        self.week = struct.unpack('<h', self.payload[8:10])[0]
-        self.gps_fix_type = self.payload[10]
-        self.numSV = self.payload[47]
-
-class UBX_NAV_SVIN(UBXMSG):
-    class_ID = b'\x01'
-    msg_ID = b'\x3B'
-    msg_type = 'NAV-SVIN'
-
-    def __init__(self, msg=b''):
-        super().__init__(msg)
-        self.itow = struct.unpack('<I', self.payload[4:8])[0]
-        self.dur = struct.unpack('<I', self.payload[8:12])[0]
-        self.mean_acc = struct.unpack('<I', self.payload[28:32])[0]  # in 0.1mm
-        self.num_obs = struct.unpack('<I', self.payload[32:36])[0] # Number of observations
-        self.valid = self.payload[36]
-        self.in_progress = self.payload[37]
+        self.type = self.payload[0]
+        self.version = self.payload[1]
+        self.infoCode = self.payload[2]
+        self.msgId = self.payload[3]
+        self.msgPayloadStart = self.payload[4:]
 
 
 class UBX_CFG_TMODE3(UBXMSG):
     class_ID = b'\x06'
     msg_ID = b'\x71'
     msg_type = 'CFG-TMODE3'
-    
-    def __init__(self, msg=b''):
-        super().__init__(msg)
 
-    def encode(self, mode, svin_min_dur, svin_acc_limit):
+    def __init__(self, msg=b'', t=0):
+        super().__init__(msg,t)
+
+    def encode_survey_in(self, svin_min_dur, svin_acc_limit):
         """
-        mode 0=disable 1=survey-in \n
         svin_min_dur = minimum duration in seconds \n
-        svin_acc_limit = required accouracy in 1e-4 meter (0.1 mm )
+        svin_acc_limit = required accouracy in meter 
         """
+
+        svin_acc_limit_e4 = int(round(svin_acc_limit*1e4,0))
         self.payload = bytearray(40)
-        self.payload[2] = mode # 0-disable 1-survey-in
-        self.payload[24:28] = svin_min_dur.to_bytes(4,'little') #min duration in seconds
-        self.payload[28:32] = svin_acc_limit.to_bytes(4,'little') #required accuraccy in 0.1 mm (1e-4 m)
+        self.payload[2] = 1  # 0-disable 1-survey-in
+        self.payload[24:28] = svin_min_dur.to_bytes(
+            4, 'little')  # min duration in seconds
+        self.payload[28:32] = svin_acc_limit_e4.to_bytes(
+            4, 'little')  # required accuraccy in 0.1 mm (1e-4 m)
         self.payload = bytes(self.payload)
         self.update()
+
+    def encode_fixed(self, lat, lon, alt, acc):
+        """
+        mode 0=disable 1=survey-in \n
+        lat/lon in deg (float) \n
+        alt in m (float) \n
+        acc - accuracy in m (float) \n
+
+        """
+        self.payload = bytearray(40)
+        self.payload[2] = 2  # 0-disable 1-survey-in
+        self.payload[3] = 1
+        lat_e7 = int(round(lat*1e7, 0))
+        lon_e7 = int(round(lon*1e7, 0))
+        alt_e2 = round(alt*100, 0)
+
+        self.payload[4:16] = struct.pack('<iii', lat_e7, lon_e7, alt_e2)
+
+        lat_e9 = int(round(lat*1e9, 0))
+        lat_hp = lat_e9-lat_e7*100
+        lon_e9 = int(round(lon*1e9, 0))
+        lon_hp = lon_e9-lon_e7*100
+        alt_e4 = round(alt*1e4, 0)
+        alt_hp = alt_e4-alt_e2
+        self.payload[16:19] = struct.pack('<bbb', lat_hp, lon_hp, alt_hp)
+        acc_e4 = round(acc*1e4, 0)
+        self.payload[20] = struct.pack('<I', acc_e4)
+
+        self.payload = bytes(self.payload)
+        self.update()
+
 
 class UBX_CFG_RATE(UBXMSG):
     class_ID = b'\x06'
     msg_ID = b'\x08'
     msg_type = 'CFG-RATE'
-    
-    def __init__(self, msg=b''):
-        super().__init__(msg)
+
+    def __init__(self, msg=b'', t=0):
+        super().__init__(msg,t)
 
     def encode(self, measurement_rate, nav_rate=1, time_ref=1):
         self.payload = bytearray(6)
-        self.payload[0:2] = measurement_rate.to_bytes(2,'little') #measurement rate im milliseconds
-        self.payload[2:4] = nav_rate.to_bytes(2,'little') #navigation rate in cycles, default =1
-        self.payload[4:6] = time_ref.to_bytes(2,'little') #time reference 1-GPS 0-UTC
+        self.payload[0:2] = measurement_rate.to_bytes(
+            2, 'little')  # measurement rate im milliseconds
+        # navigation rate in cycles, default =1
+        self.payload[2:4] = nav_rate.to_bytes(2, 'little')
+        self.payload[4:6] = time_ref.to_bytes(
+            2, 'little')  # time reference 1-GPS 0-UTC
         self.payload = bytes(self.payload)
         self.update()
+
 
 class UBX_CFG_NAVX5(UBXMSG):
     class_ID = b'\x06'
     msg_ID = b'\x23'
     msg_type = 'CFG-NAVX5'
-    
-    def __init__(self, msg=b''):
-        super().__init__(msg)
-    
+
+    def __init__(self, msg=b'', t=0):
+        super().__init__(msg,t)
+
     def set_ack_aid(self, is_ack_aid):
-        if (len(self.payload)!=40):
-            return #payload not valid
+        if (len(self.payload) != 40):
+            return  # payload not valid
         pl = bytearray(self.payload)
-        pl[2] = 0 #bitfield 0..7
-        pl[3] =(1<<2) #bitfield 8..15
-        pl[17]=is_ack_aid
-        
-        self.payload=bytes(pl)
+        pl[2] = 0  # bitfield 0..7
+        pl[3] = (1 << 2)  # bitfield 8..15
+        pl[17] = is_ack_aid
+
+        self.payload = bytes(pl)
 
     def enable_mga_ack(self):
-        pl=bytearray(40)
-        pl[2] =0x4c
-        pl[3] =0x66
-        pl[4] =0xc0
-        pl[10] =0x03
-        pl[11] =0x10
-        pl[17] =0x01
-        pl[32] =0x64
-        self.payload=bytes(pl)
+        pl = bytearray(40)
+        pl[2] = 0x4c
+        pl[3] = 0x66
+        pl[4] = 0xc0
+        pl[10] = 0x03
+        pl[11] = 0x10
+        pl[17] = 0x01
+        pl[32] = 0x64
+        self.payload = bytes(pl)
         self.update()
-        
+
     def disable_mga_ack(self):
-        pl=bytearray(40)
-        pl[2] =0x4c
-        pl[3] =0x66
-        pl[4] =0xc0
-        pl[10] =0x03
-        pl[11] =0x10
-        pl[17] =0x00
-        pl[32] =0x64
-        self.payload=bytes(pl)
+        pl = bytearray(40)
+        pl[2] = 0x4c
+        pl[3] = 0x66
+        pl[4] = 0xc0
+        pl[10] = 0x03
+        pl[11] = 0x10
+        pl[17] = 0x00
+        pl[32] = 0x64
+        self.payload = bytes(pl)
         self.update()
+
 
 class UBX_MGA_ACK(UBXMSG):
     class_ID = b'\x13'
     msg_ID = b'\x60'
     msg_type = 'MGA-ACK'
-    
-    def __init__(self, msg=b''):
-        super().__init__(msg)
+
+    def __init__(self, msg=b'', t=0):
+        super().__init__(msg,t)
         self.decode()
-    
+
     def decode(self):
-        self.type=self.payload[0] # 0x01 means the message has been used!
-        self.version=self.payload[1]
-        self.infoCode=self.payload[2] #0 means accepted 
-        self.msgID=self.payload[3]
-        self.msgPayloadStart=self.payload[4:8]
-    
-    def refers_to_data_msg(self, msg:UBXMSG):
-        return msg.payload[:4]== self.msgPayloadStart
+        self.type = self.payload[0]  # 0x01 means the message has been used!
+        self.version = self.payload[1]
+        self.infoCode = self.payload[2]  # 0 means accepted
+        self.msgID = self.payload[3]
+        self.msgPayloadStart = self.payload[4:8]
+
+    def refers_to_data_msg(self, msg: UBXMSG):
+        return msg.payload[:4] == self.msgPayloadStart
 
 
 class UBX_MGA_INI_TIME_UTC(UBXMSG):
     class_ID = b'\x13'
     msg_ID = b'\x40'
     msg_type = 'MGA-INI-TIME_UTC'
-    
-    def __init__(self, msg=b''):
-        super().__init__(msg)
 
-    def encode(self,latency , t_accuracy=0.5 ):
+    def __init__(self, msg=b'', t=0):
+        super().__init__(msg,t)
 
-        dt=datetime.utcfromtimestamp(time.time()+latency)
+    def encode(self, latency, t_accuracy=0.5):
+
+        dt = datetime.utcfromtimestamp(time.time()+latency)
         year = dt.year
         month = dt.month
         day = dt.day
-        hour=dt.hour
+        hour = dt.hour
         minute = dt.minute
         second = dt.second
-        ns =dt.microsecond*1000
+        ns = dt.microsecond*1000
 
         self.payload = bytearray(24)
-        self.payload[0] = 0x10 # type indicating ..TIME UTC
-        self.payload[1] = 0 # version
-        self.payload[2]= 0 #ref // no input via extint
-        self.payload[3]= 18 #leap seconds
-        self.payload[4:6] = year.to_bytes(2,'little')
-        self.payload[6]= month
+        self.payload[0] = 0x10  # type indicating ..TIME UTC
+        self.payload[1] = 0  # version
+        self.payload[2] = 0  # ref // no input via extint
+        self.payload[3] = 18  # leap seconds
+        self.payload[4:6] = year.to_bytes(2, 'little')
+        self.payload[6] = month
         self.payload[7] = day
         self.payload[8] = hour
         self.payload[9] = minute
         self.payload[10] = second
-        self.payload[11] = 0 #reserved
-        self.payload[12:16] = ns.to_bytes(4,'little')
-        self.payload[16:18] = int(t_accuracy).to_bytes(2,'little') #time accuracy seconds
-        self.payload[18] =0
-        self.payload[19] =0
-        self.payload[20:24] =int((t_accuracy*1e9)%1e9).to_bytes(4,'little') #time accuracy nano seconds
+        self.payload[11] = 0  # reserved
+        self.payload[12:16] = ns.to_bytes(4, 'little')
+        self.payload[16:18] = int(t_accuracy).to_bytes(
+            2, 'little')  # time accuracy seconds
+        self.payload[18] = 0
+        self.payload[19] = 0
+        # time accuracy nano seconds
+        self.payload[20:24] = int((t_accuracy*1e9) % 1e9).to_bytes(4, 'little')
 
         self.payload = bytes(self.payload)
         self.update()
-
 
 
 def starts_with_UBX_Header(buffer):
@@ -557,5 +688,3 @@ def starts_with_UBX_Message(buffer):
         return total_length
     else:
         return 0
-
-
