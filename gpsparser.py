@@ -4,25 +4,20 @@
 import struct
 
 from serial.serialutil import SerialException
-import ubxhelper
 import serial
 import time
 import serial.tools.list_ports
-
-import logging
-logger = logging.getLogger(__name__)
-logger.level=logging.DEBUG
-
 from nmeahelper import *
 from rtcmhelper import *
 from ubxhelper import *
 import threading
-import logging
 from os import fchown
 import socket
-import threading
-import time
+import subprocess
 
+import logging
+logger = logging.getLogger(__name__)
+logger.level=logging.DEBUG
 
 class GPSParser(threading.Thread):
     def __init__(self):

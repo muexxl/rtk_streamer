@@ -496,6 +496,12 @@ class UBX_CFG_TMODE3(UBXMSG):
     def __init__(self, msg=b'', t=0):
         super().__init__(msg,t)
 
+    def encode_time_mode_off(self):
+        self.payload = bytearray(40)
+        self.payload = bytes(self.payload)
+        self.update()
+
+
     def encode_survey_in(self, svin_min_dur, svin_acc_limit):
         """
         svin_min_dur = minimum duration in seconds \n
@@ -521,11 +527,11 @@ class UBX_CFG_TMODE3(UBXMSG):
 
         """
         self.payload = bytearray(40)
-        self.payload[2] = 2  # 0-disable 1-survey-in
+        self.payload[2] = 2  # 0-disable 1-survey-in 2-fixed
         self.payload[3] = 1
         lat_e7 = int(round(lat*1e7, 0))
         lon_e7 = int(round(lon*1e7, 0))
-        alt_e2 = round(alt*100, 0)
+        alt_e2 = int(round(alt*100, 0))
 
         self.payload[4:16] = struct.pack('<iii', lat_e7, lon_e7, alt_e2)
 
@@ -534,10 +540,10 @@ class UBX_CFG_TMODE3(UBXMSG):
         lon_e9 = int(round(lon*1e9, 0))
         lon_hp = lon_e9-lon_e7*100
         alt_e4 = round(alt*1e4, 0)
-        alt_hp = alt_e4-alt_e2
+        alt_hp = int(alt_e4-alt_e2*100)
         self.payload[16:19] = struct.pack('<bbb', lat_hp, lon_hp, alt_hp)
-        acc_e4 = round(acc*1e4, 0)
-        self.payload[20] = struct.pack('<I', acc_e4)
+        acc_e4 = int(round(acc*1e4, 0))
+        self.payload[20:24] = struct.pack('<I', acc_e4)
 
         self.payload = bytes(self.payload)
         self.update()
