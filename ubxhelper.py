@@ -263,6 +263,8 @@ class UBXMSG(object):
             return UBX_NAV_STATUS(self.buffer, self.time_received)
         if (identifier == b'\x01\x06'):
             return UBX_NAV_SOL(self.buffer, self.time_received)
+        if (identifier == b'\x01\x07'):
+            return UBX_NAV_PVT(self.buffer, self.time_received)
         if (identifier == b'\x01\x14'):
             return UBX_NAV_HPPOSLLH(self.buffer, self.time_received)
         if (identifier == b'\x01\x21'):
@@ -282,7 +284,6 @@ class UBXMSG(object):
         # print("Message unknown: ")
         # self.print()
         return self
-
 
 class UBX_NAV_POSLLH(UBXMSG):
     class_ID = b'\x01'
@@ -333,6 +334,55 @@ class UBX_NAV_SOL(UBXMSG):
         self.gps_fix_type = self.payload[10]
         self.numSV = self.payload[47]
 
+
+class UBX_NAV_PVT(UBXMSG):
+    class_ID = b'\x01'
+    msg_ID = b'\x07'
+    msg_type = 'NAV-PVT'
+
+    def __init__(self, msg=b'', t=0):
+        super().__init__(msg,t)
+
+        self.itow, self.year = struct.unpack('<IH',self.payload[0:6])
+        self.month= self.payload[6]
+        self.day= self.payload[7]
+        self.hour= self.payload[8]
+        self.min= self.payload[9]
+        self.sec= self.payload[10]
+        flags_valid=self.payload[11]
+        self.validMag= flags_valid >>3 & 0x01
+        self.fullyResolved= flags_valid >> 2 & 0x01
+        self.validTime= flags_valid >> 1 & 0x01
+        self.validDate= flags_valid & 0x01
+        
+        self.tAcc, self.nano=struct.unpack('<Ii',self.payload[12:20])
+        self.fixType = self.payload[20]
+        flags=self.payload[21]
+        self.gnssFixOk = flags & (1<<0)
+        self.diffSoln= (flags >>1 ) &0b111
+        self.psmState= (flags>>4) & 0x01
+        self.headVehValid = (flags>>5) & 0x01
+        self.carrSoln = flags >>6
+        self.RTK_float= flags >>6 &0x01
+        self.RTK_fix= flags >>7 &0x01
+        
+        flags2 = self.payload[22]
+        self.confirmed_time= flags2>>7 & 0x01
+        self.confirmed_date= flags2 >>6 &0x01
+        self.confirmed_Avai= flags2 >>5 &0x01
+
+        self.numSV = self.payload[23]
+        self.lon_e7, self.lat_e7, self.height_e3, self.hMSL_e4, self.hAcc_e3, self.vAcc_e3 = struct.unpack("<iiiiII",self.payload[24:48])
+        self.lon = float(self.lon_e7 * 1e-7)
+        self.lat = float(self.lat_e7 * 1e-7)
+        self.height = float(self.height_e3 * 1e-3)
+        self.hAcc = float(self.hAcc_e3 * 1e-3)
+        self.vAcc = float(self.vAcc_e3 * 1e-3)
+
+        self.pdop, flags3 = struct.unpack('<HH',self.payload[76:80])
+
+        self.invalidLLH= flags3 &0x01
+        self.lastCorrectionAge = (flags3>>1) &0b1111
 
 class UBX_NAV_HPPOSLLH(UBXMSG):
     class_ID = b'\x01'

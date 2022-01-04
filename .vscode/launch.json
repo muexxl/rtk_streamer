@@ -9,6 +9,7 @@
             "type": "python",
             "request": "launch",
             "program": "./rtk_streamer.py",
+            "args": [ "-s", "20,20.4" ,"-at"],
             "console": "integratedTerminal"
         },
         {

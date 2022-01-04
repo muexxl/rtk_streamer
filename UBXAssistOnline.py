@@ -11,16 +11,18 @@ logger = logging.getLogger(__name__)
 
 token_file = "~/.keys/ublox_token.txt"
 token_file=os.path.expanduser(token_file)
-ASSISTANCE_FILE="assistance_data.ubx"
-ASSISTANCE_FILE=os.path.expanduser(ASSISTANCE_FILE)
 
 class UBXAssistOnline(threading.Thread):
-    def __init__(self, location):
-        self.lat ,self.lon, self.alt,self.acc = location
+    def __init__(self, location, output_file):
         self.assistance_data = b''
         self.keep_running = True
         self.data = b''
         self.token = ''
+        self.location_valid=0
+        self.update_location(location)
+        self.last_update = 0
+        self.output_file = output_file
+
         try:
             with open(token_file, 'r') as f:
                 self.token = f.read()
@@ -31,30 +33,42 @@ class UBXAssistOnline(threading.Thread):
             self.keep_running=False
         threading.Thread.__init__(self)
 
+    def update_location(self, location):
+        self.lat ,self.lon, self.alt,self.acc = location
+        location_valid_old=self.location_valid
+
+        if self.lat and self.lon and self.alt and self.acc :
+            self.location_valid = 1
+        else:
+            self.location_valid = 0
+
+        if (not location_valid_old )and self.location_valid:
+            self.last_update=0 #force update because we have a valid location now
+
+
     def run(self):
         interval = 600  # 10 minutes
-        last_update = 0
         update_due = 1
         while(self.keep_running):
 
             now = time.time()
-            if (now > last_update+interval):
+            if (now > self.last_update+interval):
                 update_due = 1
             else:
                 update_due = 0
 
             if update_due:
                 self.update_assistance_data()
-                last_update=now
+                self.last_update=now
             
             time.sleep(1)
                 
     def update_assistance_data(self):
         data = None
-        if self.lat and self.lon and self.alt:
-            url = f"http://online-live1.services.u-blox.com/GetOnlineData.ashx?token={self.token};gnss=gps,glo;datatype=eph;lat={self.lat:.6f};lon={self.lon:.6f};alt={self.alt:.6f};pacc={self.acc:.6f};filteronpos"
+        if self.location_valid:
+            url = f"http://online-live1.services.u-blox.com/GetOnlineData.ashx?token={self.token};gnss=gps;datatype=eph;lat={self.lat:.6f};lon={self.lon:.6f};alt={self.alt:.6f};pacc={self.acc:.6f};filteronpos"
         else:
-            url = f"http://online-live1.services.u-blox.com/GetOnlineData.ashx?token={self.token};gnss=gps,glo;datatype=eph"
+            url = f"http://online-live1.services.u-blox.com/GetOnlineData.ashx?token={self.token};gnss=gps;datatype=eph"
 
         try:
             data = req.urlopen(url).read()
@@ -77,16 +91,16 @@ class UBXAssistOnline(threading.Thread):
 
     def load_data_from_file(self):
         try:
-            f = open(ASSISTANCE_FILE, 'rb')
+            f = open(self.output_file, 'rb')
             self.data = f.read()
             f.close()
         except FileNotFoundError:
             pass
 
     def write_data_to_file(self):
-        logger.info(f"UBXAssistOnline | Writing {len(self.data)} bytes Assistance Data to file {ASSISTANCE_FILE}")
+        logger.info(f"UBXAssistOnline | Writing {len(self.data)} bytes Assistance Data to file {self.output_file}")
         try:
-            f = open(ASSISTANCE_FILE, 'wb')
+            f = open(self.output_file, 'wb')
             f.write(self.data)
         finally:
             f.close()
