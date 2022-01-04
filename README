@@ -8,13 +8,15 @@ Author: Stephan Muekusch stephan@1drone.de
 
 run python3 rtk_streamer.py
 
+commandline args via
 
-TODOs:
+./rtk_streamer.py --help
 
-- parse command line parameter for
-    - SVIN acc
-    - SVIN time
-    - port
+-s "dur,acc" survey in parameters for survey in mode
+-l "lat, lon, alt, acc" provide a location as string for fixed mode
+-o path/to/file.csv use output mode to record locations
 
-- BUG: broadcast is currently issued on ALL networks. This leads to multiple receiption at host interface. What to do?
-    
+-a path/to/file.ubx download assistance data from ublox. place the ublox token in file ~/.keys/ublox_token.txt
+-t path/to/file.txt save difference between time observed by GNS receiver and system time to file.
+
+
