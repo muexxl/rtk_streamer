@@ -5,7 +5,7 @@ After = network.target
 [Service]
 WorkingDirectory = /home/1drone/rtk_streamer/
 Type = simple
-ExecStart = /home/1drone/rtk_streamer/rtk_streamer.py -a -l HP -t
+ExecStart = /home/1drone/rtk_streamer/rtk_streamer.py -a -l HP
 User = 1drone
 Group = ubuntu
 Restart = on-failure
