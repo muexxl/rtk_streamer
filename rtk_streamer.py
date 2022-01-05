@@ -21,9 +21,7 @@ logger = logging.getLogger(__name__)
 logger.level =logging.INFO
 
 ANTENNA_FILE = "Antennas.loc"
-UBX_TOKEN_FILE="~/.keys/UBX_TOKEN.txt"
-UBX_TOKEN_FILE=os.path.expanduser(UBX_TOKEN_FILE)
-ASSISTANCE_FILE="~/.assistance_data.ubx"
+ASSISTANCE_FILE="assistance_data.ubx"
 ASSISTANCE_FILE=os.path.expanduser(ASSISTANCE_FILE)
 LOCATION_FILE="HP_Antenna_Cypress.csv"
 TIMEDIFFERENCE_FILE="timedifference.txt"
@@ -48,6 +46,7 @@ class RTKStreamer():
             self.location_valid = 1
         
         self.mode = mode
+        logger.info(f'RTK Streamer | Starting in Mode {mode}')
         self.time_difference = time_difference
         self.assistance_file= assistance_file
         self.ublox_token=''
@@ -108,6 +107,14 @@ class RTKStreamer():
                   
             self.process_ubx_messages()
 
+    def set_status(self, status):
+        if self.status == status:
+            pass
+        else:
+            logger.info(f"RTK Streamer | Changing Status from {self.status} to {status}")
+            self.status=status
+        self.last_status = time.time()
+    
     def process_ubx_messages(self):
         msg = self.gpsp.get_next_ubx_msg()
         while(msg):
@@ -115,8 +122,7 @@ class RTKStreamer():
 
             if msg.msg_type == 'NAV-HPPOSLLH':
                 if self.mode == 'output_positions':
-                    self.status= 'streaming'
-                    self.last_status=time.time()
+                    self.set_status('streaming')
                     line=f"{msg.time_received}, {msg.lat:0.9f}, {msg.lon:.9f}, {msg.height:0.4f}\n"
                     with open(LOCATION_FILE,'a') as f:
                         f.write(line)
@@ -124,14 +130,12 @@ class RTKStreamer():
             if msg.msg_type == 'NAV-SVIN':
                 logger.info(f"RTK Streamer | SVIN Status Dur: {msg.dur}s, Acc: {msg.mean_acc/10000:01.3f}m  Valid: {msg.valid}  Obs: {msg.num_obs}  In progress: {msg.in_progress}  itow: {msg.itow}, t_recv: {msg.time_received} ")
                 if msg.in_progress==1:
-                    self.last_status= time.time()
-                    self.status='surveying'          
-            
+                    self.set_status('surveying')
+                    
             if msg.msg_type == 'NAV-STATUS':
                 if msg.gpsfix == 5:
-                    self.last_status=time.time()
-                    self.status = 'time'
-
+                    self.set_status('time')
+                    
             if msg.msg_type == 'NAV-PVT':
                 logger.debug(f"NAV-PVT | {msg.year}-{msg.month}-{msg.day} {msg.hour}:{msg.min}:{msg.sec+msg.nano*1e-9:11.9f} ")
                 logger.debug(f"NAV-PVT | Validity Time-Date-fullyR-Mag {msg.validTime}-{msg.validDate}-{msg.fullyResolved}-{msg.validMag}")
@@ -150,26 +154,21 @@ class RTKStreamer():
                 else:
                     self.fix_status='not ok'
                     if self.mode == 'output_positions':
-                        self.status='acquiring'
-                        self.last_status=time.time()
+                        self.set_status('acquiring')
                 self.last_fix_status = time.time()
 
                 if msg.fixType == 5:
-                    self.last_status=time.time()
-                    self.status = 'time'
+                    self.set_status('time')
 
 
-            if msg.msg_type == 'NAV-TIMEUTC':
-                if self.time_difference:
-                    pass
             msg = self.gpsp.get_next_ubx_msg()
             
         time_since_last_status = time.time() - self.last_status
         time_since_last_fix_status = time.time() - self.last_fix_status
 
         if time_since_last_status > 5:
-            self.status = 'undefined'
-        
+            self.set_status('undefined')
+            
         if time_since_last_fix_status > 5:
             self.fix_status = 'undefined'
         
