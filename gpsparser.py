@@ -17,7 +17,6 @@ import subprocess
 
 import logging
 logger = logging.getLogger(__name__)
-logger.level=logging.DEBUG
 
 class GPSParser(threading.Thread):
     def __init__(self):
@@ -133,7 +132,7 @@ class GPSParser(threading.Thread):
             try:
                 self.sock.sendto(data, broadcast)
                 log_msg= f"GPSParser | len={len(data)}, content={bytes_to_str(data)}"
-                logger.info(log_msg)
+                logger.debug(log_msg)
                 break #finish after first successful transmission
             except OSError:
                 pass
